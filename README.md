@@ -1,4 +1,8 @@
-# العالمي | Alalme
+<p align="center">
+  <img src="docs/assets/alalme-logo.png" alt="العالمي | Alalme" width="180">
+</p>
+
+<h1 align="center">العالمي | Alalme</h1>
 
 > **منصة التجارة الإلكترونية متعددة المتاجر لقطع غيار السيارات وإدارة توافق المركبات**
 >
