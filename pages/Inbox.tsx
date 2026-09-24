@@ -40,14 +40,10 @@ const Inbox: React.FC = () => {
     }
 
     sendInboxMessage({
-      id: `reply_${Date.now()}`,
-      senderId: user.id,
       receiverId: receiverId,
       type: InboxType.REPLY,
       title: `Re: ${selectedMsg.title}`,
       body: replyText,
-      isRead: false,
-      createdAt: new Date().toISOString()
     });
     setReplyText('');
     alert("Reply Sent");

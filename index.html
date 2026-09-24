@@ -3,50 +3,99 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
     <title>ALALAMI | العالمي</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              primary: '#03346E',
-              secondary: '#E2E2B6',
-              surface: '#F8FAFC',
-            },
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              cairo: ['Cairo', 'sans-serif'],
-            },
-          },
-        },
+      function reportClientError(type, err, detail) {
+        try {
+          var payload = {
+            type: type,
+            message: err ? (err.message || String(err)) : (detail ? detail.message : 'Unknown'),
+            filename: detail ? detail.filename : (err ? err.fileName : ''),
+            lineno: detail ? detail.lineno : (err ? err.lineNumber : 0),
+            colno: detail ? detail.colno : (err ? err.columnNumber : 0),
+            stack: err ? (err.stack || '') : '',
+            url: window.location.href,
+            time: new Date().toISOString()
+          };
+          fetch('/api/v1/client-error', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } catch(e) {}
       }
+      window.addEventListener('error', function(e) {
+        var detail = { message: e.message, filename: e.filename, lineno: e.lineno, colno: e.colno };
+        reportClientError('window.error', e.error, detail);
+        var banner = document.createElement('div');
+        banner.style = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:white;padding:16px;z-index:99999999;font-family:monospace;font-size:13px;white-space:pre-wrap;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+        banner.innerHTML = '<strong>RUNTIME JS ERROR:</strong><br>' + (e.error ? (e.error.stack || e.error.message) : e.message) + '<br>at ' + (e.filename || '') + ':' + (e.lineno || '') + ':' + (e.colno || '');
+        document.body ? document.body.appendChild(banner) : document.documentElement.appendChild(banner);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        reportClientError('unhandledrejection', e.reason, null);
+        var banner = document.createElement('div');
+        banner.style = 'position:fixed;bottom:0;left:0;right:0;background:#b91c1c;color:white;padding:16px;z-index:99999999;font-family:monospace;font-size:13px;white-space:pre-wrap;box-shadow:0 -4px 12px rgba(0,0,0,0.3);';
+        banner.innerHTML = '<strong>UNHANDLED PROMISE REJECTION:</strong><br>' + (e.reason ? (e.reason.stack || e.reason.message || String(e.reason)) : String(e.reason));
+        document.body ? document.body.appendChild(banner) : document.documentElement.appendChild(banner);
+      });
     </script>
+
     <style>
+      @font-face {
+        font-family: 'Thmanyah Sans';
+        src: url('/fonts/thmanyah-sans-Light.woff2') format('woff2');
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Thmanyah Sans';
+        src: url('/fonts/thmanyah-sans-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Thmanyah Sans';
+        src: url('/fonts/thmanyah-sans-Medium.woff2') format('woff2');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Thmanyah Sans';
+        src: url('/fonts/thmanyah-sans-Bold.woff2') format('woff2');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Thmanyah Sans';
+        src: url('/fonts/thmanyah-sans-Black.woff2') format('woff2');
+        font-weight: 900;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
+
+    <style>
+      /* Base typography */
+      body, button, input, select, textarea {
+        font-family: 'Thmanyah Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
       /* Smooth scrolling */
       html { scroll-behavior: smooth; }
       /* Custom Scrollbar */
       ::-webkit-scrollbar { width: 8px; }
       ::-webkit-scrollbar-track { background: #f1f1f1; }
-      ::-webkit-scrollbar-thumb { background: #03346E; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #022550; }
+      ::-webkit-scrollbar-thumb { background: #22396F; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #010736; }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.10.1",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1"
-  }
-}
-</script>
-</head>
+  </head>
   <body class="bg-slate-50 text-slate-900 antialiased">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

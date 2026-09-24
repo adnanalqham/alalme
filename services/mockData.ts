@@ -1,5 +1,5 @@
 
-import { CarBrand, Category, Part, Sale, Shop, StockMovement, User, UserRole, UserStatus, WebsiteSettings, ExternalSalesRequest, ContactMessage, InboxMessage } from "../types";
+import { CarBrand, Category, Part, Sale, Shop, ShopStatus, StockMovement, StockMovementType, User, UserRole, UserStatus, WebsiteSettings, ExternalSalesRequest, ContactMessage, InboxMessage } from "../types";
 import { DEFAULT_SETTINGS } from "../constants";
 
 // Initial Mock Data (Preserving existing constants)
@@ -66,6 +66,10 @@ const INITIAL_SHOPS: Shop[] = [
     id: 's1',
     ownerId: 'u2',
     name: 'Al-Barakah Auto Parts',
+    nameEn: 'Al-Barakah Auto Parts',
+    nameAr: 'البركة لقطع غيار السيارات',
+    countryId: 'c_ye',
+    status: ShopStatus.APPROVED,
     phone: '777111111',
     city: 'Aden',
     addressDetails: 'Main Street, near Crater',
@@ -73,7 +77,7 @@ const INITIAL_SHOPS: Shop[] = [
     longitude: 45.0187,
     workingHours: '08:00 AM - 09:00 PM',
     isActive: true,
-    notes: 'Specialized in Toyota and Hyundai',
+    descriptionEn: 'Specialized in Toyota and Hyundai',
     createdAt: '2023-01-01T10:00:00Z',
     email: 'shop@barakah.com',
     whatsappNumber: '777111111'
@@ -137,19 +141,25 @@ const INITIAL_SALES: Sale[] = [
 const INITIAL_MOVEMENTS: StockMovement[] = [
   {
     id: 'm1',
+    productId: 'p1',
     partId: 'p1',
     shopId: 's1',
-    type: 'RESTOCK',
+    type: StockMovementType.RESTOCK,
     quantityChange: 25,
+    quantityAfter: 25,
+    userId: 'u2',
     date: '2023-10-01T09:00:00Z',
     note: 'Initial Stock'
   },
   {
     id: 'm2',
+    productId: 'p1',
     partId: 'p1',
     shopId: 's1',
-    type: 'SALE',
+    type: StockMovementType.SALE,
     quantityChange: -2,
+    quantityAfter: 23,
+    userId: 'u2',
     date: '2023-10-15T10:00:00Z',
     note: 'Sold to u3'
   }

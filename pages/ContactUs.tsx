@@ -4,10 +4,12 @@ import { useData } from '../context/DataContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Upload, X, CheckCircle, Mail, Phone, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { DEFAULT_SETTINGS } from '../constants';
 
 const ContactUs: React.FC = () => {
   const { t, language } = useLanguage();
   const { submitContactMessage, websiteSettings } = useData();
+  const settings = websiteSettings || DEFAULT_SETTINGS;
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -64,21 +66,21 @@ const ContactUs: React.FC = () => {
                <div className="bg-blue-100 p-3 rounded-full text-primary"><Phone size={24}/></div>
                <div>
                   <h3 className="font-bold text-gray-800">Phone</h3>
-                  <p className="text-gray-600" dir="ltr">{websiteSettings.contactPhone}</p>
+                  <p className="text-gray-600" dir="ltr">{settings?.contactPhone}</p>
                </div>
             </div>
             <div className="flex items-center gap-4 bg-white p-4 rounded-lg shadow-sm">
                <div className="bg-blue-100 p-3 rounded-full text-primary"><Mail size={24}/></div>
                <div>
                   <h3 className="font-bold text-gray-800">Email</h3>
-                  <p className="text-gray-600">{websiteSettings.contactEmail}</p>
+                  <p className="text-gray-600">{settings?.contactEmail}</p>
                </div>
             </div>
             <div className="flex items-center gap-4 bg-white p-4 rounded-lg shadow-sm">
                <div className="bg-blue-100 p-3 rounded-full text-primary"><MapPin size={24}/></div>
                <div>
                   <h3 className="font-bold text-gray-800">Location</h3>
-                  <p className="text-gray-600">{language === 'ar' ? websiteSettings.contactAddressAr : websiteSettings.contactAddressEn}</p>
+                  <p className="text-gray-600">{language === 'ar' ? settings?.contactAddressAr : settings?.contactAddressEn}</p>
                </div>
             </div>
           </div>

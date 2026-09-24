@@ -1,780 +1,602 @@
-
-import React, { useState } from 'react';
-import { useData } from '../../context/DataContext';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Users, Store, Package, ShoppingCart, DollarSign, CreditCard, Warehouse,
+  Star, MessageSquareWarning, TrendingUp, AlertTriangle, CheckCircle2,
+  Clock, ArrowUpRight, ArrowDownRight, RefreshCw, ChevronLeft, ChevronRight,
+  ShieldCheck, Eye, ExternalLink, Calendar
+} from 'lucide-react';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
+  LineChart, Line, AreaChart, Area
+} from 'recharts';
 import { useLanguage } from '../../context/LanguageContext';
-import { UserRole, UserStatus, WebsiteSettings, Shop, User, CarBrand, Category } from '../../types';
-import { Users, ShoppingBag, DollarSign, Store, Activity, Box, Settings, Plus, Trash, Key, AlertTriangle, Save, Globe, Smartphone, Mail, MapPin, AlertCircle, Upload, X, Search, CheckCircle, Tag, Eye, EyeOff } from 'lucide-react';
-import { GOOGLE_MAPS_API_KEY } from '../../constants';
-import Inbox from '../Inbox'; // Reusing the unified inbox component
-
-type Tab = 'overview' | 'users' | 'shops' | 'brands' | 'categories' | 'inventory' | 'settings' | 'inbox';
+import { adminApi } from '../../services/adminApi';
 
 const AdminDashboard: React.FC = () => {
-  const { users, shops, sales, parts, brands, categories, toggleUserStatus, resetUserPassword, addBrand, deleteBrand, addCategory, toggleCategoryStatus, deleteCategory, stockMovements, websiteSettings, updateSettings, addShop, deleteShop, inboxMessages } = useData();
-  const { t, language } = useLanguage();
-  
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
-  
-  // Calculate unread for admin
-  const unreadCount = inboxMessages.filter(m => {
-     const admin = users.find(u => u.role === UserRole.ADMIN);
-     return admin && m.receiverId === admin.id && !m.isRead;
-  }).length;
-  
-  // States for Filters
-  const [userFilter, setUserFilter] = useState<'ALL' | 'SELLER' | 'CUSTOMER' | 'ADMIN'>('ALL');
-  
-  // State for Brand Management
-  const [newBrand, setNewBrand] = useState({ nameEn: '', nameAr: '', logoUrl: '' });
+  const { language } = useLanguage();
+  const isRtl = language === 'ar';
 
-  // State for Category Management
-  const [newCategory, setNewCategory] = useState({ nameEn: '', nameAr: '' });
-  
-  // State for Shop Wizard
-  const [isAddingShop, setIsAddingShop] = useState(false);
-  const [showShopPassword, setShowShopPassword] = useState(false); // Toggle for shop password
-  const [shopForm, setShopForm] = useState({
-    ownerName: '',
-    ownerUsername: '',
-    ownerPassword: '',
-    ownerPhone: '',
-    ownerEmail: '',
-    shopName: '',
-    city: '',
-    address: '',
-    latitude: 15.3694,
-    longitude: 44.1910,
-    whatsapp: '',
-    workingHours: '',
-    notes: '',
-    logoUrl: '' // For Shop Logo
-  });
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [periodDays, setPeriodDays] = useState<number>(30);
 
-  // State for Settings Form
-  const [settingsForm, setSettingsForm] = useState<WebsiteSettings>(websiteSettings);
-
-  // Stats
-  const totalRevenue = sales.reduce((acc, curr) => acc + curr.totalPrice, 0);
-  const totalProfit = sales.reduce((acc, curr) => {
-    const part = parts.find(p => p.id === curr.partId);
-    const cost = part?.costPrice || 0;
-    return acc + (curr.totalPrice - (cost * curr.quantity));
-  }, 0);
-
-  // Handlers
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'brand' | 'shop') => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (file.size > 2 * 1024 * 1024) {
-        alert("File too large. Max 2MB.");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        if (target === 'brand') {
-          setNewBrand({ ...newBrand, logoUrl: base64 });
-        } else {
-          setShopForm({ ...shopForm, logoUrl: base64 });
-        }
-      };
-      reader.readAsDataURL(file);
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await adminApi.getDashboard({ days: periodDays });
+      setData(res);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load dashboard data from backend API');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleAddBrand = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newBrand.logoUrl) {
-      alert("Please upload a logo");
-      return;
-    }
-    addBrand({
-      id: `b_${Date.now()}`,
-      nameEn: newBrand.nameEn,
-      nameAr: newBrand.nameAr,
-      logoUrl: newBrand.logoUrl
-    });
-    setNewBrand({ nameEn: '', nameAr: '', logoUrl: '' });
-  };
+  useEffect(() => {
+    fetchDashboardData();
+  }, [periodDays]);
 
-  const handleAddCategory = (e: React.FormEvent) => {
-    e.preventDefault();
-    addCategory({
-      id: `c_${Date.now()}`,
-      nameEn: newCategory.nameEn,
-      nameAr: newCategory.nameAr,
-      isActive: true
-    });
-    setNewCategory({ nameEn: '', nameAr: '' });
-  };
+  const L = (en: string, ar: string) => (isRtl ? ar : en);
 
-  const handleAddShop = (e: React.FormEvent) => {
-    e.preventDefault();
-    const ownerId = `u_${Date.now()}`;
-    const shopId = `s_${Date.now()}`;
-    
-    const owner: User = {
-      id: ownerId,
-      role: UserRole.SELLER,
-      fullName: shopForm.ownerName,
-      username: shopForm.ownerUsername,
-      email: shopForm.ownerEmail,
-      phone: shopForm.ownerPhone,
-      city: shopForm.city,
-      passwordHash: shopForm.ownerPassword,
-      status: UserStatus.ACTIVE,
-      shopId: shopId
-    };
-
-    const shop: Shop = {
-      id: shopId,
-      ownerId: ownerId,
-      name: shopForm.shopName,
-      phone: shopForm.ownerPhone, // Default to owner phone
-      whatsappNumber: shopForm.whatsapp,
-      email: shopForm.ownerEmail,
-      city: shopForm.city,
-      addressDetails: shopForm.address,
-      latitude: Number(shopForm.latitude),
-      longitude: Number(shopForm.longitude),
-      workingHours: shopForm.workingHours,
-      notes: shopForm.notes,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      logoUrl: shopForm.logoUrl
-    };
-
-    addShop(shop, owner);
-    setIsAddingShop(false);
-    // Reset form
-    setShopForm({
-      ownerName: '', ownerUsername: '', ownerPassword: '', ownerPhone: '', ownerEmail: '',
-      shopName: '', city: '', address: '', latitude: 15.3694, longitude: 44.1910,
-      whatsapp: '', workingHours: '', notes: '', logoUrl: ''
-    });
-  };
-
-  const handleResetPassword = (userId: string) => {
-    const newPass = resetUserPassword(userId);
-    alert(`Password reset. Temporary password: ${newPass}`);
-  };
-
-  const renderOverview = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <div className="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-gray-500 text-sm font-bold uppercase">{t('users')}</p>
-            <h3 className="text-3xl font-bold">{users.length}</h3>
-          </div>
-          <Users className="text-blue-500 opacity-50" size={32} />
-        </div>
-        <div className="mt-2 text-xs text-gray-400">
-          {users.filter(u => u.role === UserRole.SELLER).length} Sellers, {users.filter(u => u.role === UserRole.CUSTOMER).length} Customers
-        </div>
-      </div>
-      
-      <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-gray-500 text-sm font-bold uppercase">{t('totalRevenue')}</p>
-            <h3 className="text-3xl font-bold text-green-600">${totalRevenue.toLocaleString()}</h3>
-          </div>
-          <DollarSign className="text-green-500 opacity-50" size={32} />
-        </div>
-        <div className="mt-2 text-xs text-gray-400">
-          Approx Profit: <span className="text-green-600 font-bold">${totalProfit.toLocaleString()}</span>
-        </div>
-      </div>
-
-      <div className="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-gray-500 text-sm font-bold uppercase">{t('shops')}</p>
-            <h3 className="text-3xl font-bold">{shops.length}</h3>
-          </div>
-          <Store className="text-yellow-500 opacity-50" size={32} />
-        </div>
-        <div className="mt-2 text-xs text-gray-400">Active Marketplaces</div>
-      </div>
-
-      <div className="bg-white p-6 rounded-lg shadow border-l-4 border-purple-500">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-gray-500 text-sm font-bold uppercase">{t('sales')}</p>
-            <h3 className="text-3xl font-bold">{sales.length}</h3>
-          </div>
-          <ShoppingBag className="text-purple-500 opacity-50" size={32} />
-        </div>
-        <div className="mt-2 text-xs text-gray-400">Total Transactions</div>
-      </div>
-    </div>
-  );
-
-  const renderUsers = () => {
-    const filteredUsers = users.filter(u => {
-      if (userFilter === 'ALL') return true;
-      return u.role === userFilter;
-    });
-
+  if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-lg font-bold flex items-center gap-2"><Users size={20}/> User Management</h2>
-          <div className="flex gap-2">
-            {(['ALL', 'SELLER', 'CUSTOMER', 'ADMIN'] as const).map(role => (
-              <button 
-                key={role}
-                onClick={() => setUserFilter(role)}
-                className={`px-3 py-1 rounded text-sm font-bold ${userFilter === role ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'}`}
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
+        <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-[#010736]">
+          {L('Loading real dashboard statistics from PostgreSQL...', 'جاري تحميل الإحصائيات الحقيقية من قاعدة بيانات PostgreSQL...')}
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white border border-rose-200 rounded-2xl p-8 text-center max-w-lg mx-auto shadow-sm">
+        <AlertTriangle size={36} className="text-rose-500 mx-auto mb-3" />
+        <h3 className="font-bold text-[#010736] text-base mb-1">{L('Failed to load dashboard', 'تعذر تحميل بيانات لوحة التحكم')}</h3>
+        <p className="text-xs text-slate-500 mb-4">{error}</p>
+        <button
+          onClick={fetchDashboardData}
+          className="px-4 py-2 bg-[#010736] hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow"
+        >
+          {L('Retry Connection', 'إعادة المحاولة')}
+        </button>
+      </div>
+    );
+  }
+
+  const {
+    users = {},
+    shops = {},
+    products = {},
+    orders = {},
+    sales = {},
+    payments = {},
+    inventory = {},
+    reviews_complaints = {},
+    recent = {},
+    charts = {},
+    period = {},
+  } = data || {};
+
+  return (
+    <div className="space-y-6 text-slate-800">
+      {/* Top Banner & Period Selector */}
+      <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-black text-[#010736] tracking-tight">
+              {L('ALA Platform Control Center', 'لوحة تحكم منصة آلا المركزية')}
+            </h1>
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+              Live PostgreSQL
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            {L(
+              'Real-time automotive spare parts marketplace transactions, inventory, and access metrics.',
+              'بيانات وإحصائيات مباشرة من قاعدة البيانات لكافة عمليات سوق قطع غيار السيارات والمخزون.'
+            )}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 text-xs">
+            <Calendar size={14} className="text-slate-500 mx-1" />
+            {[
+              { days: 7, label: L('7 Days', '7 أيام') },
+              { days: 30, label: L('30 Days', '30 يوماً') },
+              { days: 90, label: L('90 Days', '3 أشهر') },
+              { days: 365, label: L('1 Year', 'سنة') },
+            ].map(p => (
+              <button
+                key={p.days}
+                onClick={() => setPeriodDays(p.days)}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                  periodDays === p.days
+                    ? 'bg-[#010736] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-[#010736] hover:bg-slate-200/60'
+                }`}
               >
-                {role === 'ALL' ? t('allUsers') : role}
+                {p.label}
               </button>
             ))}
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 text-gray-600 text-sm">
-              <tr>
-                <th className="p-3">Name</th>
-                <th className="p-3">Role</th>
-                <th className="p-3">Username</th>
-                <th className="p-3">Contact</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filteredUsers.map(user => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="p-3 font-medium">{user.fullName}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${
-                      user.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' :
-                      user.role === 'SELLER' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="p-3 text-gray-500">{user.username}</td>
-                  <td className="p-3 text-sm">
-                    <div className="flex flex-col">
-                      <span>{user.phone}</span>
-                      <span className="text-gray-400 text-xs">{user.email}</span>
-                    </div>
-                  </td>
-                  <td className="p-3">
-                    <span className={`px-2 py-1 rounded text-xs font-bold flex w-fit items-center gap-1 ${
-                      user.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {user.status === 'ACTIVE' ? <CheckCircle size={10} /> : <X size={10} />}
-                      {user.status}
-                    </span>
-                  </td>
-                  <td className="p-3 flex gap-2">
-                    <button 
-                      onClick={() => toggleUserStatus(user.id)}
-                      className={`p-1 rounded ${user.status === 'ACTIVE' ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
-                      title="Toggle Status"
-                    >
-                      <Activity size={16} />
-                    </button>
-                    <button 
-                      onClick={() => handleResetPassword(user.id)}
-                      className="p-1 rounded text-orange-500 hover:bg-orange-50"
-                      title="Reset Password"
-                    >
-                      <Key size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+          <button
+            onClick={fetchDashboardData}
+            title={L('Refresh Data', 'تحديث البيانات')}
+            className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-[#010736] shadow-xs transition"
+          >
+            <RefreshCw size={15} />
+          </button>
         </div>
       </div>
-    );
-  };
 
-  const renderShops = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold flex items-center gap-2"><Store/> Shop Management</h2>
-        <button 
-          onClick={() => setIsAddingShop(true)}
-          className="bg-secondary text-primary px-4 py-2 rounded flex items-center gap-2 font-bold hover:bg-yellow-200"
-        >
-          <Plus size={18} /> {t('addShop')}
-        </button>
-      </div>
-
-      {isAddingShop && (
-        <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
-           <h3 className="text-lg font-bold mb-4 border-b pb-2 text-primary">New Shop Registration Wizard</h3>
-           <form onSubmit={handleAddShop} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Owner Details */}
-              <div className="space-y-4 bg-gray-50 p-4 rounded">
-                 <h4 className="font-bold text-gray-700 flex items-center gap-2"><Users className="w-4 h-4"/> Owner Information</h4>
-                 <input placeholder={t('ownerName')} required className="w-full p-2 border rounded" value={shopForm.ownerName} onChange={e => setShopForm({...shopForm, ownerName: e.target.value})} />
-                 <div className="grid grid-cols-2 gap-2">
-                    <input placeholder={t('phone')} required className="p-2 border rounded" value={shopForm.ownerPhone} onChange={e => setShopForm({...shopForm, ownerPhone: e.target.value})} />
-                    <input placeholder={t('email')} className="p-2 border rounded" value={shopForm.ownerEmail} onChange={e => setShopForm({...shopForm, ownerEmail: e.target.value})} />
-                 </div>
-                 <div className="grid grid-cols-2 gap-2">
-                    <input placeholder={t('username')} required className="p-2 border rounded" value={shopForm.ownerUsername} onChange={e => setShopForm({...shopForm, ownerUsername: e.target.value})} />
-                    <div className="relative">
-                      <input 
-                        placeholder={t('password')} 
-                        required 
-                        type={showShopPassword ? "text" : "password"} 
-                        className="w-full p-2 border rounded pr-10" 
-                        value={shopForm.ownerPassword} 
-                        onChange={e => setShopForm({...shopForm, ownerPassword: e.target.value})} 
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowShopPassword(!showShopPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary focus:outline-none"
-                      >
-                        {showShopPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                 </div>
-              </div>
-
-              {/* Shop Details */}
-              <div className="space-y-4 bg-gray-50 p-4 rounded">
-                 <h4 className="font-bold text-gray-700 flex items-center gap-2"><Store className="w-4 h-4"/> Shop Details</h4>
-                 <input placeholder={t('shopNameField')} required className="w-full p-2 border rounded" value={shopForm.shopName} onChange={e => setShopForm({...shopForm, shopName: e.target.value})} />
-                 <div className="grid grid-cols-2 gap-2">
-                    <input placeholder={t('city')} required className="p-2 border rounded" value={shopForm.city} onChange={e => setShopForm({...shopForm, city: e.target.value})} />
-                    <input placeholder={t('address')} required className="p-2 border rounded" value={shopForm.address} onChange={e => setShopForm({...shopForm, address: e.target.value})} />
-                 </div>
-                 <input placeholder="Working Hours" className="w-full p-2 border rounded" value={shopForm.workingHours} onChange={e => setShopForm({...shopForm, workingHours: e.target.value})} />
-                 <input placeholder="WhatsApp Number" className="w-full p-2 border rounded" value={shopForm.whatsapp} onChange={e => setShopForm({...shopForm, whatsapp: e.target.value})} />
-              </div>
-
-              {/* Location & Extra */}
-              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-4 bg-gray-50 p-4 rounded">
-                    <h4 className="font-bold text-gray-700 flex items-center gap-2"><MapPin className="w-4 h-4"/> Location (Google Maps)</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                       <input type="number" step="any" placeholder={t('latitude')} className="p-2 border rounded" value={shopForm.latitude} onChange={e => setShopForm({...shopForm, latitude: Number(e.target.value)})} />
-                       <input type="number" step="any" placeholder={t('longitude')} className="p-2 border rounded" value={shopForm.longitude} onChange={e => setShopForm({...shopForm, longitude: Number(e.target.value)})} />
-                    </div>
-                    <div className="h-32 bg-gray-200 rounded overflow-hidden">
-                       <iframe width="100%" height="100%" frameBorder="0" src={`https://www.google.com/maps/embed/v1/view?key=${GOOGLE_MAPS_API_KEY}&center=${shopForm.latitude},${shopForm.longitude}&zoom=14`}></iframe>
-                    </div>
-                 </div>
-
-                 <div className="space-y-4 bg-gray-50 p-4 rounded">
-                    <h4 className="font-bold text-gray-700 flex items-center gap-2"><Upload className="w-4 h-4"/> Branding</h4>
-                    <textarea placeholder={t('notes')} className="w-full p-2 border rounded" rows={2} value={shopForm.notes} onChange={e => setShopForm({...shopForm, notes: e.target.value})} />
-                    
-                    <div className="border border-dashed p-4 rounded text-center bg-white">
-                        {shopForm.logoUrl ? (
-                          <div className="relative w-20 h-20 mx-auto">
-                            <img src={shopForm.logoUrl} className="w-full h-full object-contain" />
-                            <button type="button" onClick={() => setShopForm({...shopForm, logoUrl: ''})} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X size={12}/></button>
-                          </div>
-                        ) : (
-                          <label className="cursor-pointer block">
-                            <Upload className="mx-auto text-gray-400 mb-2"/>
-                            <span className="text-xs text-primary font-bold">{t('uploadLogo')}</span>
-                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleLogoUpload(e, 'shop')}/>
-                          </label>
-                        )}
-                    </div>
-                 </div>
-              </div>
-
-              <div className="md:col-span-2 flex justify-end gap-3 border-t pt-4">
-                 <button type="button" onClick={() => setIsAddingShop(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">{t('cancel')}</button>
-                 <button type="submit" className="bg-primary text-white px-6 py-2 rounded font-bold hover:bg-blue-800 transition">{t('saveChanges')}</button>
-              </div>
-           </form>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {shops.map(shop => (
-          <div key={shop.id} className="bg-white p-6 rounded-lg shadow border border-gray-100 relative group">
-            <div className="flex items-start justify-between mb-4">
-               <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border">
-                     {shop.logoUrl ? <img src={shop.logoUrl} className="w-full h-full object-cover"/> : <Store className="text-gray-400"/>}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg leading-none">{shop.name}</h3>
-                    <p className="text-sm text-gray-500">{shop.city}</p>
-                  </div>
-               </div>
-               <span className={`px-2 py-1 text-xs rounded font-bold ${shop.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                 {shop.isActive ? t('active') : t('inactive')}
-               </span>
+      {/* 1. Core KPIs Summary Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Sales KPI */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-slate-500 mb-1">{L('Total Revenue', 'إجمالي المبيعات')}</div>
+            <div className="text-2xl font-black text-[#010736] tracking-tight">
+              ${(sales.total_sales ?? 0).toLocaleString()}
             </div>
-            
-            <div className="space-y-2 text-sm text-gray-600 mb-4">
-               <p className="flex items-center gap-2"><Smartphone size={14}/> {shop.phone}</p>
-               <p className="flex items-center gap-2"><MapPin size={14}/> {shop.addressDetails}</p>
-               <p className="text-xs text-gray-400 mt-2">{shop.notes}</p>
-            </div>
-
-            <div className="flex justify-end gap-2 border-t pt-3">
-               <button className="text-blue-500 hover:bg-blue-50 p-2 rounded"><Settings size={18}/></button>
-               <button onClick={() => deleteShop(shop.id)} className="text-red-500 hover:bg-red-50 p-2 rounded"><Trash size={18}/></button>
+            <div className="flex items-center gap-1.5 mt-1.5 text-[11px]">
+              <span className="text-slate-500">{L('Period:', 'خلال الفترة:')}</span>
+              <strong className="text-emerald-700">${(sales.period_sales ?? 0).toLocaleString()}</strong>
+              {sales.growth_rate !== undefined && (
+                <span className="flex items-center text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">
+                  <ArrowUpRight size={12} />
+                  {sales.growth_rate}%
+                </span>
+              )}
             </div>
           </div>
-        ))}
-      </div>
-    </div>
-  );
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center border border-amber-500/20">
+            <DollarSign size={22} />
+          </div>
+        </div>
 
-  const renderBrands = () => (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-         <h3 className="font-bold text-lg mb-4 text-primary flex items-center gap-2"><CheckCircle size={20}/> Manage Car Brands</h3>
-         <form onSubmit={handleAddBrand} className="flex gap-4 items-end">
-            <div className="flex-1">
-               <label className="block text-sm font-bold mb-1">Brand Name (EN)</label>
-               <input 
-                 className="w-full p-2 border rounded" 
-                 value={newBrand.nameEn} 
-                 onChange={e => setNewBrand({...newBrand, nameEn: e.target.value})}
-                 required
-               />
+        {/* Orders KPI */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-slate-500 mb-1">{L('Total Orders', 'إجمالي الطلبات')}</div>
+            <div className="text-2xl font-black text-[#010736] tracking-tight">
+              {(orders.total ?? 0).toLocaleString()}
             </div>
-            <div className="flex-1">
-               <label className="block text-sm font-bold mb-1">Brand Name (AR)</label>
-               <input 
-                 className="w-full p-2 border rounded" 
-                 value={newBrand.nameAr} 
-                 onChange={e => setNewBrand({...newBrand, nameAr: e.target.value})}
-                 required
-               />
+            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
+              <span className="text-amber-700 font-bold">{orders.pending ?? 0} {L('new', 'جديد')}</span>
+              <span>•</span>
+              <span className="text-emerald-700 font-bold">{orders.completed ?? 0} {L('done', 'مكتمل')}</span>
             </div>
-             <div className="flex-1">
-               <label className="block text-sm font-bold mb-1">Logo</label>
-               <div className="relative border p-1 rounded flex items-center bg-gray-50">
-                  <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, 'brand')} className="absolute inset-0 opacity-0 cursor-pointer w-full"/>
-                  <div className="flex items-center gap-2 px-2 overflow-hidden w-full">
-                     <Upload size={16} className="text-gray-400 shrink-0"/>
-                     <span className="text-xs text-gray-500 truncate">{newBrand.logoUrl ? "Image Selected" : "Upload..."}</span>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-[#010736]/10 text-[#010736] flex items-center justify-center border border-[#010736]/20">
+            <ShoppingCart size={22} />
+          </div>
+        </div>
+
+        {/* Shops KPI */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-slate-500 mb-1">{L('Merchant Shops', 'المتاجر والمحلات')}</div>
+            <div className="text-2xl font-black text-[#010736] tracking-tight">
+              {(shops.total ?? 0).toLocaleString()}
+            </div>
+            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
+              <span className="text-emerald-700 font-bold">{shops.active ?? 0} {L('active', 'نشط')}</span>
+              <span>•</span>
+              <span className="text-amber-700 font-bold">{shops.pending ?? 0} {L('pending', 'معلق')}</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-600 flex items-center justify-center border border-sky-500/20">
+            <Store size={22} />
+          </div>
+        </div>
+
+        {/* Users KPI */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-slate-500 mb-1">{L('Total Users', 'إجمالي المستخدمين')}</div>
+            <div className="text-2xl font-black text-[#010736] tracking-tight">
+              {(users.total ?? 0).toLocaleString()}
+            </div>
+            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
+              <span className="text-emerald-700 font-bold">+{users.new ?? 0} {L('new in period', 'جديد بالفترة')}</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center border border-purple-500/20">
+            <Users size={22} />
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Detailed Breakdown Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Section 1: Users Breakdown */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-[#010736]" />
+              <h3 className="font-bold text-[#010736] text-sm">{L('1. Users Breakdown', '1. المستخدمون والأدوار')}</h3>
+            </div>
+            <Link to="/admin/users" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center gap-1">
+              <span>{L('Manage', 'إدارة')}</span>
+              {isRtl ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <div className="text-[10px] text-slate-500">{L('Total Users', 'الإجمالي')}</div>
+              <div className="text-base font-extrabold text-[#010736]">{users.total ?? 0}</div>
+            </div>
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <div className="text-[10px] text-slate-500">{L('New in Period', 'المستخدمون الجدد')}</div>
+              <div className="text-base font-extrabold text-emerald-600">+{users.new ?? 0}</div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 pt-1">
+            <div className="text-[11px] font-bold text-slate-500 uppercase">{L('By Role', 'توزيع الأدوار')}</div>
+            {Object.entries(users.by_role || {}).map(([role, cnt]) => (
+              <div key={role} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-slate-50/70 border border-slate-100">
+                <span className="font-mono text-[11px] font-semibold text-slate-700">{role}</span>
+                <span className="font-bold text-[#010736]">{cnt as number}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Section 2: Shops Breakdown */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Store size={16} className="text-[#010736]" />
+              <h3 className="font-bold text-[#010736] text-sm">{L('2. Shops Status', '2. المتاجر والمحلات')}</h3>
+            </div>
+            <Link to="/admin/shops" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center gap-1">
+              <span>{L('Manage', 'إدارة')}</span>
+              {isRtl ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </Link>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-600">{L('Total Shops', 'إجمالي المتاجر المسجلة')}</span>
+              <strong className="text-[#010736] font-mono text-sm">{shops.total ?? 0}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-50/70 border border-emerald-100">
+              <span className="text-emerald-800 font-semibold">{L('Active / Approved', 'المتاجر المعتمدة والنشطة')}</span>
+              <strong className="text-emerald-700 font-mono text-sm">{shops.active ?? 0}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-amber-50/70 border border-amber-100">
+              <span className="text-amber-800 font-semibold">{L('Pending Approval', 'طلبات معلقة')}</span>
+              <strong className="text-amber-700 font-mono text-sm">{shops.pending ?? 0}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-600">{L('New Submissions in Period', 'طلبات جديدة بالفترة')}</span>
+              <strong className="text-slate-800 font-mono text-sm">+{shops.new_requests ?? 0}</strong>
+            </div>
+          </div>
+
+          {(shops.pending ?? 0) > 0 && (
+            <Link
+              to="/admin/shops/approvals"
+              className="block text-center py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-xs"
+            >
+              {L(`Review ${shops.pending} Pending Shops`, `مراجعة ${shops.pending} طلبات انضمام جديدة`)}
+            </Link>
+          )}
+        </div>
+
+        {/* Section 3: Products & Catalog */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Package size={16} className="text-[#010736]" />
+              <h3 className="font-bold text-[#010736] text-sm">{L('3. Products & Parts', '3. المنتجات والقطع')}</h3>
+            </div>
+            <Link to="/admin/catalog/products" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center gap-1">
+              <span>{L('Catalog', 'الكتالوج')}</span>
+              {isRtl ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </Link>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-600">{L('Total Products', 'إجمالي المنتجات')}</span>
+              <strong className="text-[#010736] font-mono text-sm">{products.total ?? 0}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-50/70 border border-emerald-100">
+              <span className="text-emerald-800">{L('Published / Active', 'المنتجات المنشورة')}</span>
+              <strong className="text-emerald-700 font-mono text-sm">{products.published ?? 0}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-600">{L('Inactive / Hidden', 'غير النشطة / المعطلة')}</span>
+              <strong className="text-slate-700 font-mono text-sm">{products.inactive ?? 0}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-rose-50/70 border border-rose-100">
+              <span className="text-rose-800 font-semibold">{L('Low Stock Alert', 'منتجات منخفضة المخزون')}</span>
+              <strong className="text-rose-700 font-mono text-sm">{products.low_stock ?? 0}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 4: Orders Breakdown */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <ShoppingCart size={16} className="text-[#010736]" />
+              <h3 className="font-bold text-[#010736] text-sm">{L('4. Orders Pipeline', '4. دورة معالجة الطلبات')}</h3>
+            </div>
+            <Link to="/admin/orders" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center gap-1">
+              <span>{L('All Orders', 'كافة الطلبات')}</span>
+              {isRtl ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+            <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-100">
+              <div className="text-[10px] text-amber-700">{L('New / Pending', 'طلبات جديدة')}</div>
+              <div className="text-base font-extrabold text-amber-800">{orders.new ?? 0}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-sky-50/70 border border-sky-100">
+              <div className="text-[10px] text-sky-700">{L('In Processing', 'قيد المعالجة')}</div>
+              <div className="text-base font-extrabold text-sky-800">{orders.processing ?? 0}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100">
+              <div className="text-[10px] text-emerald-700">{L('Completed', 'مكتملة')}</div>
+              <div className="text-base font-extrabold text-emerald-800">{orders.completed ?? 0}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-100">
+              <div className="text-[10px] text-rose-700">{L('Cancelled', 'ملغاة')}</div>
+              <div className="text-base font-extrabold text-rose-800">{orders.cancelled ?? 0}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 5: Payments Overview */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <CreditCard size={16} className="text-[#010736]" />
+              <h3 className="font-bold text-[#010736] text-sm">{L('5. Payments Status', '5. المدفوعات والتحصيل')}</h3>
+            </div>
+            <Link to="/admin/payments" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center gap-1">
+              <span>{L('Details', 'التفاصيل')}</span>
+              {isRtl ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </Link>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-50/70 border border-emerald-100">
+              <span className="text-emerald-800 font-semibold">{L('Paid Total', 'إجمالي المدفوع')}</span>
+              <strong className="text-emerald-700 font-mono text-sm">${(payments.paid ?? 0).toLocaleString()}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-amber-50/70 border border-amber-100">
+              <span className="text-amber-800 font-semibold">{L('Pending Settlement', 'مبالغ معلقة')}</span>
+              <strong className="text-amber-700 font-mono text-sm">${(payments.pending ?? 0).toLocaleString()}</strong>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-rose-50/70 border border-rose-100">
+              <span className="text-rose-800 font-semibold">{L('Refunded', 'المسترد')}</span>
+              <strong className="text-rose-700 font-mono text-sm">${(payments.refunded ?? 0).toLocaleString()}</strong>
+            </div>
+          </div>
+
+          <div className="pt-1">
+            <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{L('Payment Methods', 'طرق الدفع')}</div>
+            <div className="flex flex-wrap gap-1">
+              {(payments.by_method || []).map((m: any) => (
+                <span key={m.payment_method} className="text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200">
+                  {m.payment_method}: <strong>{m.count}</strong> (${Number(m.amount).toLocaleString()})
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Section 6: Inventory Status & Section 7: Reviews & Complaints */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Warehouse size={16} className="text-[#010736]" />
+              <h3 className="font-bold text-[#010736] text-sm">{L('6. Inventory & Feedback', '6. المخزون والتقييمات')}</h3>
+            </div>
+            <Link to="/admin/inventory" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center gap-1">
+              <span>{L('Inventory', 'المخزون')}</span>
+              {isRtl ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+            <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-100">
+              <div className="text-[10px] text-amber-700">{L('Low Stock Items', 'مخزون منخفض')}</div>
+              <div className="text-base font-extrabold text-amber-800">{inventory.low_stock_count ?? 0}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-100">
+              <div className="text-[10px] text-rose-700">{L('Out of Stock', 'نفد المخزون')}</div>
+              <div className="text-base font-extrabold text-rose-800">{inventory.out_of_stock_count ?? 0}</div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 pt-1 text-xs">
+            <div className="flex items-center justify-between py-1 border-b border-slate-100">
+              <span className="text-slate-600 flex items-center gap-1">
+                <Star size={13} className="text-amber-500 fill-amber-500" />
+                {L('Avg Rating', 'متوسط التقييم')}
+              </span>
+              <strong className="text-[#010736] font-bold">
+                {reviews_complaints.average_rating ?? 0} / 5 ({reviews_complaints.reviews_count ?? 0})
+              </strong>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-slate-600 flex items-center gap-1">
+                <MessageSquareWarning size={13} className="text-rose-500" />
+                {L('Open Complaints', 'شكاوى مفتوحة')}
+              </span>
+              <strong className="text-rose-600 font-bold">{reviews_complaints.complaints_open ?? 0}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Monthly Sales Analytics Chart */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={18} className="text-[#010736]" />
+            <h3 className="font-bold text-[#010736] text-base">{L('Sales Trend (Past 12 Months)', 'حركة المبيعات الشهرية الحقيقية')}</h3>
+          </div>
+          <span className="text-xs text-slate-500 font-mono">Aggregation: PostgreSQL</span>
+        </div>
+
+        {(charts.monthly_sales || []).length === 0 ? (
+          <div className="p-8 text-center text-slate-400 text-xs">
+            {L('No sales data recorded yet in this timeline.', 'لا توجد بيانات مبيعات مسجلة في هذا النطاق.')}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={charts.monthly_sales}>
+              <defs>
+                <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#010736" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#010736" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '12px', fontSize: '12px' }}
+              />
+              <Area type="monotone" dataKey="revenue" stroke="#010736" strokeWidth={2.5} fillOpacity={1} fill="url(#salesGrad)" name={L('Revenue ($)', 'الإيراد ($)')} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* 4. Section 9: Recent Data Tables (Latest Records) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Latest Orders */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+            <h3 className="font-bold text-[#010736] text-sm">{L('Latest Orders', 'آخر الطلبات الواردة')}</h3>
+            <Link to="/admin/orders" className="text-xs text-amber-600 font-bold hover:underline">
+              {L('View All', 'عرض الكل')}
+            </Link>
+          </div>
+
+          {(recent.orders || []).length === 0 ? (
+            <div className="p-6 text-center text-slate-400 text-xs">{L('No recent orders.', 'لا توجد طلبات حديثة.')}</div>
+          ) : (
+            <div className="space-y-2">
+              {recent.orders.map((ord: any) => (
+                <div key={ord.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                  <div>
+                    <div className="font-bold text-[#010736]">{ord.order_number}</div>
+                    <div className="text-[11px] text-slate-500">{ord.customer_name || 'Customer'}</div>
                   </div>
-                  {newBrand.logoUrl && <img src={newBrand.logoUrl} className="h-8 w-8 object-contain ml-auto bg-white border rounded"/>}
-               </div>
-            </div>
-            <button type="submit" className="bg-primary text-white px-4 py-2 rounded font-bold h-10 hover:bg-blue-800">Add</button>
-         </form>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-         {brands.map(brand => (
-            <div key={brand.id} className="bg-white p-4 rounded shadow flex flex-col items-center text-center group relative">
-               <img src={brand.logoUrl} alt={brand.nameEn} className="h-12 w-auto mb-2 object-contain" />
-               <h4 className="font-bold text-sm">{language === 'ar' ? brand.nameAr : brand.nameEn}</h4>
-               <button 
-                  onClick={() => deleteBrand(brand.id)}
-                  className="absolute top-1 right-1 bg-red-100 text-red-500 p-1 rounded-full opacity-0 group-hover:opacity-100 transition"
-               >
-                  <X size={12} />
-               </button>
-            </div>
-         ))}
-      </div>
-    </div>
-  );
-
-  const renderCategories = () => (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-         <h3 className="font-bold text-lg mb-4 text-primary flex items-center gap-2"><Tag size={20}/> {t('manageCategories')}</h3>
-         <form onSubmit={handleAddCategory} className="flex gap-4 items-end">
-            <div className="flex-1">
-               <label className="block text-sm font-bold mb-1">{t('categoryNameEn')}</label>
-               <input 
-                 className="w-full p-2 border rounded" 
-                 value={newCategory.nameEn} 
-                 onChange={e => setNewCategory({...newCategory, nameEn: e.target.value})}
-                 required
-               />
-            </div>
-            <div className="flex-1">
-               <label className="block text-sm font-bold mb-1">{t('categoryNameAr')}</label>
-               <input 
-                 className="w-full p-2 border rounded" 
-                 value={newCategory.nameAr} 
-                 onChange={e => setNewCategory({...newCategory, nameAr: e.target.value})}
-                 required
-               />
-            </div>
-            <button type="submit" className="bg-primary text-white px-6 py-2 rounded font-bold h-10 hover:bg-blue-800">{t('addCategory')}</button>
-         </form>
-      </div>
-
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b font-bold text-gray-700">{t('activeCategories')}</div>
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 text-gray-600 text-sm">
-            <tr>
-               <th className="p-3">Name (EN)</th>
-               <th className="p-3">Name (AR)</th>
-               <th className="p-3">Parts</th>
-               <th className="p-3">Status</th>
-               <th className="p-3">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-             {categories.map(cat => (
-                <tr key={cat.id} className="hover:bg-gray-50">
-                   <td className="p-3 font-medium">{cat.nameEn}</td>
-                   <td className="p-3 font-medium">{cat.nameAr}</td>
-                   <td className="p-3 text-gray-500">{parts.filter(p => p.categoryId === cat.id).length}</td>
-                   <td className="p-3">
-                      <button 
-                         onClick={() => toggleCategoryStatus(cat.id)}
-                         className={`px-3 py-1 rounded-full text-xs font-bold ${cat.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
-                      >
-                         {cat.isActive ? t('active') : t('inactive')}
-                      </button>
-                   </td>
-                   <td className="p-3">
-                      <button onClick={() => deleteCategory(cat.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded">
-                         <Trash size={16} />
-                      </button>
-                   </td>
-                </tr>
-             ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const renderInventory = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-         {/* Low Stock Alert */}
-         <div className="bg-red-50 p-4 rounded-lg border border-red-100">
-            <h3 className="font-bold text-red-800 flex items-center gap-2 mb-2"><AlertTriangle size={18}/> {t('lowStock')}</h3>
-            <ul className="space-y-2">
-               {parts.filter(p => p.stockQuantity <= 3).map(p => (
-                  <li key={p.id} className="flex justify-between text-sm bg-white p-2 rounded shadow-sm">
-                     <span>{language === 'ar' ? p.nameAr : p.nameEn}</span>
-                     <span className="font-bold text-red-600">{p.stockQuantity} left</span>
-                  </li>
-               ))}
-               {parts.filter(p => p.stockQuantity <= 3).length === 0 && <p className="text-sm text-gray-500">No low stock items.</p>}
-            </ul>
-         </div>
-
-         {/* Stats */}
-         <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-             <h3 className="font-bold text-blue-800 flex items-center gap-2 mb-2"><Box size={18}/> {t('currentStock')}</h3>
-             <div className="text-3xl font-bold text-blue-900 mb-1">{parts.reduce((a, b) => a + b.stockQuantity, 0)}</div>
-             <p className="text-sm text-blue-700">Total items across all shops</p>
-         </div>
-      </div>
-
-      {/* Movements Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-         <div className="p-4 border-b font-bold flex items-center gap-2">
-            <Activity size={18} /> {t('stockMovement')}
-         </div>
-         <div className="max-h-96 overflow-y-auto">
-            <table className="w-full text-left text-sm">
-               <thead className="bg-gray-50 text-gray-600 sticky top-0">
-                  <tr>
-                     <th className="p-3">{t('date')}</th>
-                     <th className="p-3">Part</th>
-                     <th className="p-3">{t('changeType')}</th>
-                     <th className="p-3">{t('quantity')}</th>
-                     <th className="p-3">{t('reason')}</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y">
-                  {[...stockMovements].reverse().map(mv => {
-                     const part = parts.find(p => p.id === mv.partId);
-                     return (
-                        <tr key={mv.id} className="hover:bg-gray-50">
-                           <td className="p-3 text-gray-500">{new Date(mv.date).toLocaleDateString()}</td>
-                           <td className="p-3 font-medium">{part ? (language === 'ar' ? part.nameAr : part.nameEn) : 'Unknown Part'}</td>
-                           <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                                 mv.type === 'SALE' ? 'bg-green-100 text-green-800' :
-                                 mv.type === 'RESTOCK' ? 'bg-blue-100 text-blue-800' :
-                                 'bg-yellow-100 text-yellow-800'
-                              }`}>
-                                 {mv.type}
-                              </span>
-                           </td>
-                           <td className={`p-3 font-bold ${mv.quantityChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {mv.quantityChange > 0 ? '+' : ''}{mv.quantityChange}
-                           </td>
-                           <td className="p-3 text-gray-500">{mv.note || '-'}</td>
-                        </tr>
-                     );
-                  })}
-               </tbody>
-            </table>
-         </div>
-      </div>
-    </div>
-  );
-
-  const renderSettings = () => (
-    <div className="bg-white rounded-lg shadow p-6">
-       <div className="flex justify-between items-center mb-6">
-         <h2 className="text-xl font-bold flex items-center gap-2"><Settings className="text-gray-600"/> {t('websiteSettings')}</h2>
-         <button onClick={() => updateSettings(settingsForm)} className="bg-primary text-white px-6 py-2 rounded font-bold hover:bg-blue-800 flex items-center gap-2">
-            <Save size={18}/> {t('saveChanges')}
-         </button>
-       </div>
-
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Header */}
-          <section className="space-y-4">
-             <h3 className="font-bold text-lg text-primary border-b pb-2">{t('headerSettings')}</h3>
-             <div>
-                <label className="block text-sm font-bold mb-1">App Name (EN)</label>
-                <input className="w-full p-2 border rounded" value={settingsForm.appNameEn} onChange={e => setSettingsForm({...settingsForm, appNameEn: e.target.value})} />
-             </div>
-             <div>
-                <label className="block text-sm font-bold mb-1">App Name (AR)</label>
-                <input className="w-full p-2 border rounded text-right" value={settingsForm.appNameAr} onChange={e => setSettingsForm({...settingsForm, appNameAr: e.target.value})} />
-             </div>
-          </section>
-
-          {/* Contact */}
-          <section className="space-y-4">
-             <h3 className="font-bold text-lg text-primary border-b pb-2">{t('contactSettings')}</h3>
-             <div className="grid grid-cols-2 gap-4">
-                <div>
-                   <label className="block text-sm font-bold mb-1">Phone</label>
-                   <input className="w-full p-2 border rounded" value={settingsForm.contactPhone} onChange={e => setSettingsForm({...settingsForm, contactPhone: e.target.value})} />
+                  <div className="text-end">
+                    <div className="font-mono font-bold text-slate-900">${ord.total}</div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                      {ord.status}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                   <label className="block text-sm font-bold mb-1">Email</label>
-                   <input className="w-full p-2 border rounded" value={settingsForm.contactEmail} onChange={e => setSettingsForm({...settingsForm, contactEmail: e.target.value})} />
-                </div>
-             </div>
-             <div>
-                <label className="block text-sm font-bold mb-1">Address (EN)</label>
-                <input className="w-full p-2 border rounded" value={settingsForm.contactAddressEn} onChange={e => setSettingsForm({...settingsForm, contactAddressEn: e.target.value})} />
-             </div>
-          </section>
-
-          {/* Social */}
-          <section className="space-y-4">
-             <h3 className="font-bold text-lg text-primary border-b pb-2">{t('socialSettings')}</h3>
-             <div>
-                <label className="block text-sm font-bold mb-1 flex items-center gap-2"><Smartphone size={14}/> WhatsApp Number</label>
-                <input className="w-full p-2 border rounded" value={settingsForm.whatsappNumber} onChange={e => setSettingsForm({...settingsForm, whatsappNumber: e.target.value})} />
-             </div>
-             <div className="grid grid-cols-2 gap-4">
-               <div>
-                  <label className="block text-sm font-bold mb-1">Facebook URL</label>
-                  <input className="w-full p-2 border rounded" value={settingsForm.facebookUrl} onChange={e => setSettingsForm({...settingsForm, facebookUrl: e.target.value})} />
-               </div>
-               <div>
-                  <label className="block text-sm font-bold mb-1">Instagram URL</label>
-                  <input className="w-full p-2 border rounded" value={settingsForm.instagramUrl} onChange={e => setSettingsForm({...settingsForm, instagramUrl: e.target.value})} />
-               </div>
-             </div>
-          </section>
-
-          {/* Footer */}
-           <section className="space-y-4">
-             <h3 className="font-bold text-lg text-primary border-b pb-2">{t('footerSettings')}</h3>
-             <div>
-                <label className="block text-sm font-bold mb-1">Footer Text (EN)</label>
-                <textarea className="w-full p-2 border rounded" rows={2} value={settingsForm.footerTextEn} onChange={e => setSettingsForm({...settingsForm, footerTextEn: e.target.value})} />
-             </div>
-             <div>
-                <label className="block text-sm font-bold mb-1">Footer Text (AR)</label>
-                <textarea className="w-full p-2 border rounded text-right" rows={2} value={settingsForm.footerTextAr} onChange={e => setSettingsForm({...settingsForm, footerTextAr: e.target.value})} />
-             </div>
-          </section>
-       </div>
-    </div>
-  );
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-primary">{t('adminPanel')}</h1>
-        <div className="bg-white px-4 py-2 rounded shadow text-sm font-bold text-gray-600">
-           Admin: {users.find(u => u.role === UserRole.ADMIN)?.username || 'System'}
-        </div>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar Tabs */}
-        <div className="w-full lg:w-64 flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-visible">
-          <button 
-            onClick={() => setActiveTab('overview')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'overview' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'}`}
-          >
-            <Activity size={20} /> Overview
-          </button>
-          <button 
-            onClick={() => setActiveTab('users')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'users' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'}`}
-          >
-            <Users size={20} /> {t('users')}
-          </button>
-          <button 
-            onClick={() => setActiveTab('shops')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'shops' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'}`}
-          >
-            <Store size={20} /> {t('shops')}
-          </button>
-          <button 
-            onClick={() => setActiveTab('brands')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'brands' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'}`}
-          >
-            <CheckCircle size={20} /> {t('brands')}
-          </button>
-          <button 
-            onClick={() => setActiveTab('categories')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'categories' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'}`}
-          >
-            <Tag size={20} /> {t('categories')}
-          </button>
-          <button 
-            onClick={() => setActiveTab('inventory')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'inventory' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'}`}
-          >
-            <Box size={20} /> {t('inventory')}
-          </button>
-          <button 
-            onClick={() => setActiveTab('settings')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'settings' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'}`}
-          >
-            <Settings size={20} /> {t('websiteSettings')}
-          </button>
-           <button 
-            onClick={() => setActiveTab('inbox')} 
-            className={`p-3 rounded-lg flex items-center gap-2 font-bold whitespace-nowrap transition ${activeTab === 'inbox' ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-blue-50'} relative`}
-          >
-            <Mail size={20} /> {t('inbox')}
-            {unreadCount > 0 && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full"></span>}
-          </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1">
-          {activeTab === 'overview' && renderOverview()}
-          {activeTab === 'users' && renderUsers()}
-          {activeTab === 'shops' && renderShops()}
-          {activeTab === 'brands' && renderBrands()}
-          {activeTab === 'categories' && renderCategories()}
-          {activeTab === 'inventory' && renderInventory()}
-          {activeTab === 'settings' && renderSettings()}
-          {activeTab === 'inbox' && <Inbox />} 
+        {/* Latest Products */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+            <h3 className="font-bold text-[#010736] text-sm">{L('Latest Products', 'آخر المنتجات المضافة')}</h3>
+            <Link to="/admin/catalog/products" className="text-xs text-amber-600 font-bold hover:underline">
+              {L('View Catalog', 'الكتالوج')}
+            </Link>
+          </div>
+
+          {(recent.products || []).length === 0 ? (
+            <div className="p-6 text-center text-slate-400 text-xs">{L('No recent products.', 'لا توجد منتجات حديثة.')}</div>
+          ) : (
+            <div className="space-y-2">
+              {recent.products.map((p: any) => (
+                <div key={p.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                  <div className="min-w-0 pr-2">
+                    <div className="font-bold text-[#010736] truncate">{p.name_ar || p.name_en}</div>
+                    <div className="text-[11px] text-slate-500 font-mono">PN: {p.part_number || '—'}</div>
+                  </div>
+                  <div className="text-end shrink-0">
+                    <div className="font-mono font-bold text-slate-900">${p.price}</div>
+                    <span className="text-[10px] text-slate-500">{p.shop_name}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Latest Users */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+            <h3 className="font-bold text-[#010736] text-sm">{L('Latest Users Registered', 'آخر المستخدمين المنضمين')}</h3>
+            <Link to="/admin/users" className="text-xs text-amber-600 font-bold hover:underline">
+              {L('View All', 'عرض الكل')}
+            </Link>
+          </div>
+
+          {(recent.users || []).length === 0 ? (
+            <div className="p-6 text-center text-slate-400 text-xs">{L('No recent users.', 'لا يوجد مستخدمون.')}</div>
+          ) : (
+            <div className="space-y-2">
+              {recent.users.map((u: any) => (
+                <div key={u.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                  <div>
+                    <div className="font-bold text-[#010736]">{u.full_name || u.email}</div>
+                    <div className="text-[11px] text-slate-500 font-mono">{u.email}</div>
+                  </div>
+                  <span className="text-[10px] font-mono uppercase bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md font-semibold">
+                    {u.role}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Latest Admin Activity / Audit Logs */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+            <h3 className="font-bold text-[#010736] text-sm">{L('Latest Administrative Activities', 'آخر الأنشطة والتدقيق الإداري')}</h3>
+            <Link to="/admin/audit" className="text-xs text-amber-600 font-bold hover:underline">
+              {L('Audit Log', 'سجل التدقيق')}
+            </Link>
+          </div>
+
+          {(recent.audit_logs || []).length === 0 ? (
+            <div className="p-6 text-center text-slate-400 text-xs">{L('No recent audit logs.', 'لا يوجد سجلات تدقيق حديثة.')}</div>
+          ) : (
+            <div className="space-y-2">
+              {recent.audit_logs.map((log: any) => (
+                <div key={log.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                  <div>
+                    <div className="font-mono text-amber-700 font-bold">{log.action}</div>
+                    <div className="text-[11px] text-slate-500">{log.entity_type} #{log.entity_id}</div>
+                  </div>
+                  <div className="text-end">
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "ALA Auto Parts",
+    "slug": "ala-auto-parts",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/images/logo/logo.png",
+    "extra": {
+      "supportsRTL": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "icon": "./assets/images/logo/logo.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo/logo.png",
+        "backgroundColor": "#010736"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-status-bar",
+      "expo-font",
+      "expo-web-browser"
+    ]
+  }
+}

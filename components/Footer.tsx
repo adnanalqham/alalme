@@ -3,14 +3,17 @@ import { useLanguage } from '../context/LanguageContext';
 import { useData } from '../context/DataContext';
 import { Phone, Mail, MapPin, Facebook, Instagram, Youtube, Video } from 'lucide-react';
 
+import { DEFAULT_SETTINGS } from '../constants';
+
 const Footer: React.FC = () => {
   const { t, language } = useLanguage();
   const { websiteSettings } = useData();
+  const settings = websiteSettings || DEFAULT_SETTINGS;
 
-  const appName = language === 'ar' ? websiteSettings.appNameAr : websiteSettings.appNameEn;
-  const address = language === 'ar' ? websiteSettings.contactAddressAr : websiteSettings.contactAddressEn;
-  const footerText = language === 'ar' ? websiteSettings.footerTextAr : websiteSettings.footerTextEn;
-  const workingHours = language === 'ar' ? websiteSettings.workingHoursAr : websiteSettings.workingHoursEn;
+  const appName = language === 'ar' ? (settings?.appNameAr || 'العالمي') : (settings?.appNameEn || 'ALALAMI');
+  const address = language === 'ar' ? (settings?.contactAddressAr || '') : (settings?.contactAddressEn || '');
+  const footerText = language === 'ar' ? (settings?.footerTextAr || '') : (settings?.footerTextEn || '');
+  const workingHours = language === 'ar' ? (settings?.workingHoursAr || '') : (settings?.workingHoursEn || '');
 
   return (
     <footer className="bg-slate-900 text-slate-300 py-8 mt-auto">
@@ -19,16 +22,16 @@ const Footer: React.FC = () => {
           
           {/* Brand */}
           <div className="md:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              {websiteSettings.logoUrl && <img src={websiteSettings.logoUrl} className="h-8 w-8" />}
+            <div className="flex items-center gap-2.5 mb-4">
+              <img src={settings?.logoUrl || '/logo.png'} alt={appName} className="h-9 w-9 object-contain flex-shrink-0" style={{ aspectRatio: '1/1' }} />
               <h3 className="text-2xl font-bold text-secondary font-cairo">{appName}</h3>
             </div>
             <p className="text-sm text-gray-400 mb-4">{footerText}</p>
             <div className="flex gap-4 mt-4">
-              {websiteSettings.facebookUrl && <a href={websiteSettings.facebookUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Facebook size={20}/></a>}
-              {websiteSettings.instagramUrl && <a href={websiteSettings.instagramUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Instagram size={20}/></a>}
-              {websiteSettings.youtubeUrl && <a href={websiteSettings.youtubeUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Youtube size={20}/></a>}
-              {websiteSettings.tiktokUrl && <a href={websiteSettings.tiktokUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Video size={20}/></a>}
+              {settings?.facebookUrl && <a href={settings.facebookUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Facebook size={20}/></a>}
+              {settings?.instagramUrl && <a href={settings.instagramUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Instagram size={20}/></a>}
+              {settings?.youtubeUrl && <a href={settings.youtubeUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Youtube size={20}/></a>}
+              {settings?.tiktokUrl && <a href={settings.tiktokUrl} target="_blank" rel="noreferrer" className="hover:text-secondary"><Video size={20}/></a>}
             </div>
           </div>
 
@@ -39,11 +42,11 @@ const Footer: React.FC = () => {
                 <ul className="space-y-2 text-sm">
                   <li className="flex items-center gap-2">
                     <Phone size={16} className="text-secondary" />
-                    <span dir="ltr">{websiteSettings.contactPhone}</span>
+                    <span dir="ltr">{settings?.contactPhone}</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Mail size={16} className="text-secondary" />
-                    <span>{websiteSettings.contactEmail}</span>
+                    <span>{settings?.contactEmail}</span>
                   </li>
                 </ul>
                 <ul className="space-y-2 text-sm">
@@ -76,7 +79,7 @@ const Footer: React.FC = () => {
 
       {/* WhatsApp Sticky Button */}
       <a 
-        href={`https://wa.me/${websiteSettings.whatsappNumber}`} 
+        href={`https://wa.me/${settings?.whatsappNumber || '777000000'}`} 
         target="_blank" 
         rel="noopener noreferrer"
         className="fixed bottom-6 right-6 bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-2xl transition transform hover:scale-110 z-50 flex items-center justify-center"

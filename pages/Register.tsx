@@ -1,240 +1,144 @@
-
-import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { User as UserIcon, Store, ArrowRight } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useData } from '../context/DataContext';
-import { UserRole, UserStatus } from '../types';
-import { useNavigate, Link } from 'react-router-dom';
-import { CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { vehicleService } from '../api';
+import { Logo } from '../components/brand/Logo';
 
 const Register: React.FC = () => {
-  const { register } = useAuth();
-  const { t, language } = useLanguage();
-  const { brands, categories } = useData();
-  const navigate = useNavigate();
+  const { language } = useLanguage();
+  const { countries, cities, categories } = useData();
+  const { register, registerShopOwner } = useAuth();
+  const { toast } = useToast();
 
-  const [formData, setFormData] = useState({
-    fullName: '',
-    username: '',
-    password: '',
-    confirmPassword: '',
-    phone: '',
-    city: '',
-    address: '',
-    ownedCarBrands: [] as string[],
-    preferredCategories: [] as string[]
+  const [type, setType] = useState<'customer' | 'shop'>('customer');
+
+  const [form, setForm] = useState({
+    fullName: '', username: '', email: '', phone: '', password: '',
+    countryId: '', cityId: '', address: '', ownedCarBrand: '',
   });
+  const [preferred, setPreferred] = useState<string[]>([]);
+  const [shop, setShop] = useState({ nameEn: '', nameAr: '', descriptionEn: '', whatsappNumber: '', opensAt: '09:00', closesAt: '18:00' });
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+  const citiesList = useMemo(() => (form.countryId ? cities.filter(c => c.countryId === form.countryId) : cities), [form.countryId, cities]);
+  const brands = useMemo(() => vehicleService.makes(), []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const toggleCat = (id: string) => setPreferred(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-
-    if (formData.password !== formData.confirmPassword) {
-      setError(t('passwordsDoNotMatch'));
-      return;
-    }
-
     try {
-      await register({
-        id: `u_${Date.now()}`,
-        role: UserRole.CUSTOMER,
-        fullName: formData.fullName,
-        username: formData.username,
-        email: '', // Optional in customer form
-        phone: formData.phone,
-        city: formData.city,
-        passwordHash: formData.password,
-        status: UserStatus.ACTIVE,
-        ownedCarBrands: formData.ownedCarBrands,
-        preferredCategories: formData.preferredCategories
-      });
-      setSuccess(true);
-      setTimeout(() => navigate('/'), 2000);
+      if (type === 'customer') {
+        (register as any)({
+          fullName: form.fullName, username: form.username, password: form.password,
+          email: form.email, phone: form.phone, countryId: form.countryId, cityId: form.cityId || undefined,
+          city: citiesList.find(c => c.id === form.cityId)?.nameEn, address: form.address,
+          preferredCategories: preferred, ownedCarBrands: form.ownedCarBrand ? [form.ownedCarBrand] : [],
+        } as any);
+        toast(language === 'ar' ? 'تم إنشاء الحساب!' : 'Account created!', { kind: 'success' });
+      } else {
+        registerShopOwner({
+          fullName: form.fullName, username: form.username, password: form.password,
+          email: form.email, phone: shop.whatsappNumber || form.phone, countryId: form.countryId, cityId: form.cityId,
+          shop: {
+            nameEn: shop.nameEn, nameAr: shop.nameAr, descriptionEn: shop.descriptionEn,
+            phone: form.phone, whatsappNumber: shop.whatsappNumber, countryId: form.countryId, cityId: form.cityId,
+            city: citiesList.find(c => c.id === form.cityId)?.nameEn,
+          },
+        });
+        toast(language === 'ar' ? 'تم تسجيل المحل! بانتظار موافقة الإدارة.' : 'Shop registered! Awaiting admin approval.', { kind: 'success' });
+      }
+      window.location.hash = type === 'customer' ? '#/' : '#/shop';
     } catch (err: any) {
-      setError(err.message || t('usernameTaken'));
+      toast(err?.message ?? 'Registration failed', { kind: 'error' });
     }
   };
 
-  const toggleSelection = (list: string[], item: string, field: 'ownedCarBrands' | 'preferredCategories') => {
-    if (list.includes(item)) {
-      setFormData({ ...formData, [field]: list.filter(i => i !== item) });
-    } else {
-      setFormData({ ...formData, [field]: [...list, item] });
-    }
-  };
-
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="bg-white p-10 rounded-lg shadow-xl text-center max-w-md w-full">
-          <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-green-600 mb-2">{t('registerSuccess')}</h2>
-          <p className="text-gray-600">{t('welcome')}</p>
-        </div>
-      </div>
-    );
-  }
+  const L = language === 'ar'
+    ? { title: 'إنشاء حساب', sub: 'انضم كعميل أو مسجّل محل.', fullName: 'الاسم الكامل', user: 'اسم المستخدم', email: 'البريد الإلكتروني', phone: 'رقم الهاتف', pass: 'كلمة المرور', country: 'الدولة', city: 'المدينة', address: 'العنوان', signup: 'إنشاء الحساب', have: 'لديك حساب؟', login: 'تسجيل الدخول', customer: 'عميل', shopOwner: 'مالك محل', shopNameEn: 'اسم المحل (إنجليزي)', shopNameAr: 'اسم المحل (عربي)', desc: 'وصف المحل (اختياري)', whatsapp: 'رقم واتساب', preferred: 'فئات مفضلة', carBrand: 'ماركة سيارتك' }
+    : { title: 'Create account', sub: 'Join as a customer or shop owner.', fullName: 'Full name', user: 'Username', email: 'Email', phone: 'Phone', pass: 'Password', country: 'Country', city: 'City', address: 'Address', signup: 'Create account', have: 'Have an account?', login: 'Sign in', customer: 'Customer', shopOwner: 'Shop owner', shopNameEn: 'Shop name (EN)', shopNameAr: 'Shop name (AR)', desc: 'Shop description (optional)', whatsapp: 'WhatsApp number', preferred: 'Preferred categories', carBrand: 'Your car brand' };
 
   return (
-    <div className="min-h-screen py-12 bg-slate-100 px-4 flex items-center justify-center">
-      <div className="max-w-3xl w-full bg-white p-8 rounded-lg shadow-xl border-t-8 border-primary">
-        <h2 className="text-3xl font-bold mb-8 text-primary text-center font-cairo">{t('register')}</h2>
-        
-        {error && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-6 flex items-center gap-3 border border-red-200">
-            <AlertCircle size={20} />
-            <span>{error}</span>
+    <div className="min-h-screen bg-gradient-to-br from-navy via-primary to-navy flex items-center justify-center px-4 py-10" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+      <div className="w-full max-w-lg">
+        <div className="flex justify-center mb-6">
+          <div className="bg-white rounded-3xl p-4 shadow-xl"><Logo size={64} light={false} /></div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-xl p-7">
+          <h1 className="text-xl font-extrabold text-primary text-center">{L.title}</h1>
+          <p className="text-xs text-gray-400 text-center mt-1 mb-5">{L.sub}</p>
+
+          <div className="flex bg-surface rounded-xl p-1 mb-5 text-xs font-bold">
+            <button onClick={() => setType('customer')} className={`flex-1 rounded-lg py-2 transition flex items-center justify-center gap-1.5 ${type === 'customer' ? 'bg-white shadow-sm text-primary' : 'text-gray-400'}`}>
+              <UserIcon size={12} /> {L.customer}
+            </button>
+            <button onClick={() => setType('shop')} className={`flex-1 rounded-lg py-2 transition flex items-center justify-center gap-1.5 ${type === 'shop' ? 'bg-white shadow-sm text-primary' : 'text-gray-400'}`}>
+              <Store size={12} /> {L.shopOwner}
+            </button>
           </div>
-        )}
-        
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Account Info */}
-          <div className="bg-gray-50 p-6 rounded-lg border border-gray-100">
-            <h3 className="font-bold text-lg mb-4 text-gray-800 border-b pb-2">Account Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">{t('fullName')} *</label>
-                <input 
-                  type="text" 
-                  required 
-                  className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-primary outline-none transition"
-                  value={formData.fullName}
-                  onChange={e => setFormData({...formData, fullName: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">{t('username')} *</label>
-                <input 
-                  type="text" 
-                  required 
-                  className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-primary outline-none transition"
-                  value={formData.username}
-                  onChange={e => setFormData({...formData, username: e.target.value})}
-                />
-              </div>
+
+          <form onSubmit={submit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <input value={form.fullName} onChange={e => set('fullName')(e.target.value)} placeholder={L.fullName} required className="col-span-2 rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none placeholder:text-gray-300" />
+              <input value={form.username} onChange={e => set('username')(e.target.value)} placeholder={L.user} required className="rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none placeholder:text-gray-300" />
+              <input value={form.password} onChange={e => set('password')(e.target.value)} type="password" placeholder={L.pass} required minLength={3} className="rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none placeholder:text-gray-300" />
+              <input value={form.email} onChange={e => set('email')(e.target.value)} type="email" placeholder={L.email} className="rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none placeholder:text-gray-300" />
+              <input value={form.phone} onChange={e => set('phone')(e.target.value)} type="tel" placeholder={L.phone} required className="rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none placeholder:text-gray-300" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">{t('password')} *</label>
-                <div className="relative">
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    required 
-                    className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-primary outline-none transition pr-10"
-                    value={formData.password}
-                    onChange={e => setFormData({...formData, password: e.target.value})}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary focus:outline-none"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+            {type === 'shop' && (
+              <div className="grid grid-cols-2 gap-3 bg-secondary/20 rounded-xl p-3">
+                <input value={shop.nameEn} onChange={e => setShop(s => ({ ...s, nameEn: e.target.value }))} placeholder={L.shopNameEn} required className="rounded-xl bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-300" />
+                <input value={shop.nameAr} onChange={e => setShop(s => ({ ...s, nameAr: e.target.value }))} placeholder={L.shopNameAr} required className="rounded-xl bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-300" />
+                <input value={shop.descriptionEn} onChange={e => setShop(s => ({ ...s, descriptionEn: e.target.value }))} placeholder={L.desc} className="col-span-2 rounded-xl bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-300" />
+                <input value={shop.whatsappNumber} onChange={e => setShop(s => ({ ...s, whatsappNumber: e.target.value }))} placeholder={L.whatsapp + ' (' + L.phone + ')'} className="col-span-2 rounded-xl bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-300" />
+              </div>
+            )}
+
+            <select value={form.countryId} onChange={e => set('countryId')(e.target.value)} required className="w-full rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none text-primary">
+              <option value="">{L.country}…</option>
+              {countries.map(c => <option key={c.id} value={c.id}>{language === 'ar' ? c.nameAr : c.nameEn}</option>)}
+            </select>
+            <select value={form.cityId} onChange={e => set('cityId')(e.target.value)} disabled={!form.countryId} className="w-full rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none text-primary disabled:opacity-50">
+              <option value="">{L.city}…</option>
+              {citiesList.map(c => <option key={c.id} value={c.id}>{language === 'ar' ? c.nameAr : c.nameEn}</option>)}
+            </select>
+            {type === 'shop' ? (
+              <input value={form.address} onChange={e => set('address')(e.target.value)} placeholder={L.address} className="w-full rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none placeholder:text-gray-300" />
+            ) : (
+              <>
+                <select value={form.ownedCarBrand} onChange={e => set('ownedCarBrand')(e.target.value)} className="w-full rounded-xl border border-gray-100 bg-surface px-3 py-3 text-sm outline-none text-primary">
+                  <option value="">{L.carBrand}…</option>
+                  {brands.map(b => <option key={b.id} value={b.nameEn}>{language === 'ar' ? b.nameAr : b.nameEn}</option>)}
+                </select>
+                <div>
+                  <div className="text-xs text-gray-400 font-semibold mb-1.5">{L.preferred}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categories.filter(c => c.isActive).slice(0, 12).map(c => (
+                      <button key={c.id} type="button" onClick={() => toggleCat(c.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${preferred.includes(c.id) ? 'bg-primary text-white' : 'bg-surface text-gray-500 hover:text-primary'}`}>
+                        {language === 'ar' ? c.nameAr : c.nameEn}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">{t('confirmPassword')} *</label>
-                <div className="relative">
-                  <input 
-                    type={showConfirmPassword ? "text" : "password"} 
-                    required 
-                    className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-primary outline-none transition pr-10"
-                    value={formData.confirmPassword}
-                    onChange={e => setFormData({...formData, confirmPassword: e.target.value})}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary focus:outline-none"
-                  >
-                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+              </>
+            )}
 
-          {/* Contact Info */}
-          <div className="bg-gray-50 p-6 rounded-lg border border-gray-100">
-            <h3 className="font-bold text-lg mb-4 text-gray-800 border-b pb-2">Contact Info</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">{t('phone')} *</label>
-                <input 
-                  type="tel" 
-                  required 
-                  className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-primary outline-none transition"
-                  value={formData.phone}
-                  onChange={e => setFormData({...formData, phone: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">{t('city')} *</label>
-                <input 
-                  type="text" 
-                  required 
-                  className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-primary outline-none transition"
-                  value={formData.city}
-                  onChange={e => setFormData({...formData, city: e.target.value})}
-                />
-              </div>
-            </div>
-          </div>
+            <button type="submit" className="w-full rounded-xl bg-primary text-white py-3 text-sm font-bold hover:bg-navy transition flex items-center justify-center gap-2">
+              {L.signup} <ArrowRight size={15} className="rtl:rotate-180" />
+            </button>
+          </form>
 
-          {/* Preferences */}
-          <div className="bg-white border border-gray-200 p-6 rounded-lg">
-            <label className="block text-base font-bold text-gray-800 mb-3">{t('ownedCars')} (Optional)</label>
-            <div className="flex flex-wrap gap-2 mb-6">
-              {brands.map(b => (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => toggleSelection(formData.ownedCarBrands, b.id, 'ownedCarBrands')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition border ${
-                    formData.ownedCarBrands.includes(b.id) 
-                      ? 'bg-primary text-white border-primary shadow-md' 
-                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                  }`}
-                >
-                  {language === 'ar' ? b.nameAr : b.nameEn}
-                </button>
-              ))}
-            </div>
-
-             <label className="block text-base font-bold text-gray-800 mb-3">{t('preferredCats')} (Optional)</label>
-             <div className="flex flex-wrap gap-2">
-              {categories.filter(c => c.isActive).map(cat => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => toggleSelection(formData.preferredCategories, cat.id, 'preferredCategories')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition border ${
-                    formData.preferredCategories.includes(cat.id) 
-                      ? 'bg-secondary text-primary border-secondary font-bold shadow-md' 
-                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                  }`}
-                >
-                  {language === 'ar' ? cat.nameAr : cat.nameEn}
-                </button>
-              ))}
-             </div>
-          </div>
-
-          <button type="submit" className="w-full bg-primary text-white py-4 rounded-lg font-bold text-lg hover:bg-blue-800 transition shadow-lg transform hover:-translate-y-1">
-            {t('register')}
-          </button>
-          
-          <p className="text-center text-sm text-gray-600 mt-4">
-             Already have an account? <Link to="/login" className="text-primary font-bold hover:underline">{t('login')}</Link>
+          <p className="text-center text-xs text-gray-400 mt-4">
+            {L.have} <Link to="/login" className="text-primary font-bold hover:underline">{L.login}</Link>
           </p>
-        </form>
+        </div>
       </div>
     </div>
   );
